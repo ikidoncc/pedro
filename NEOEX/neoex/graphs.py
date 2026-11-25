@@ -550,7 +550,43 @@ def analyze_function(expression: str, x_min: float = -8.0, x_max: float = 8.0):
     elif expr == 1 / X:
         asymptotes = r"x=0\;\text{(vertical)},\quad y=0\;\text{(horizontal)}"
     else:
-        asymptotes = r"\text{não determinadas automaticamente}"
+        asym_parts = []
+        try:
+            excluded_pts = _excluded_real_points(domain_expr, X)
+        except Exception:
+            excluded_pts = ()
+        for pt in excluded_pts[:6]:
+            try:
+                pt_exact = sp.nsimplify(pt, tolerance=1e-9, rational=True)
+                lim_r = sp.limit(expr, X, pt_exact, dir="+")
+                lim_l = sp.limit(expr, X, pt_exact, dir="-")
+                if any(lim in (sp.oo, -sp.oo, sp.zoo) for lim in (lim_r, lim_l)):
+                    asym_parts.append(rf"x={sp.latex(pt_exact)}\;\text{{(vertical)}}")
+            except Exception:
+                pass
+        if expr.is_rational_function(X):
+            h_limits = []
+            for side in (sp.oo, -sp.oo):
+                try:
+                    lim = sp.limit(expr, X, side)
+                    if lim.is_real and lim.is_number and lim not in (sp.oo, -sp.oo, sp.zoo, sp.nan):
+                        if lim not in h_limits:
+                            h_limits.append(lim)
+                except Exception:
+                    pass
+            for h_val in h_limits:
+                asym_parts.append(rf"y={sp.latex(h_val)}\;\text{{(horizontal)}}")
+        asymptotes = r",\quad ".join(asym_parts) if asym_parts else r"\text{não determinadas automaticamente}"
     rows.append(("Assíntotas", asymptotes))
-    rows.append(("Continuidade", "Contínua em todo ponto do domínio real."))
+
+    try:
+        excluded_pts = _excluded_real_points(domain_expr, X)
+    except Exception:
+        excluded_pts = ()
+    if excluded_pts:
+        pts_text = ", ".join(f"{p:g}" for p in excluded_pts[:6])
+        continuity = f"Contínua em todo ponto do domínio real; descontínua nos pontos excluídos ({pts_text})."
+    else:
+        continuity = "Contínua em todo ponto do domínio real."
+    rows.append(("Continuidade", continuity))
     return rows
