@@ -353,9 +353,12 @@ def parse_equation(text: str) -> sp.Equality:
 
 
 def parse_inequality(text: str):
-    pattern = re.search(r"(<=|>=|<|>)", text)
-    if not pattern:
+    matches = list(re.finditer(r"(<=|>=|<|>)", text))
+    if not matches:
         raise ExpressionError("Use <, >, <= ou >= para escrever a inequação.")
+    if len(matches) > 1:
+        raise ExpressionError("Nesta versão, escreva apenas uma comparação (<, >, <= ou >=) por inequação.")
+    pattern = matches[0]
     op = pattern.group(1)
     left, right = text[:pattern.start()], text[pattern.end():]
     lhs, rhs = parse_math(left), parse_math(right)

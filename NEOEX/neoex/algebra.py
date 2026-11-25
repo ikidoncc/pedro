@@ -408,14 +408,23 @@ def build_algebra_steps(source: str, operation: str):
                 rhs_exp = sp.simplify(sp.log(rhs, base))
                 if rhs_exp.is_real and rhs_exp.is_number:
                     increasing = bool(base > 1)
-                    relation_sign = ">" if isinstance(relation, (sp.StrictGreaterThan, sp.GreaterThan)) else "<" if isinstance(relation, (sp.StrictLessThan, sp.LessThan)) else ""
-                    exponent_sign = relation_sign if increasing else ("<" if relation_sign == ">" else ">")
-                    solution_formula = rf"{latex(var)} {exponent_sign} {latex(rhs_exp)}"
+                    if isinstance(relation, sp.StrictGreaterThan):
+                        tex_relation, tex_flipped = ">", "<"
+                    elif isinstance(relation, sp.GreaterThan):
+                        tex_relation, tex_flipped = r"\ge", r"\le"
+                    elif isinstance(relation, sp.StrictLessThan):
+                        tex_relation, tex_flipped = "<", ">"
+                    elif isinstance(relation, sp.LessThan):
+                        tex_relation, tex_flipped = r"\le", r"\ge"
+                    else:
+                        tex_relation = tex_flipped = ""
+                    tex_exponent_sign = tex_relation if increasing else tex_flipped
+                    solution_formula = rf"{latex(var)} {tex_exponent_sign} {latex(rhs_exp)}"
                     base_trend = "crescente" if increasing else "decrescente"
                     steps = [
                         ("Inequação original", latex(relation), "A incógnita aparece no expoente de uma função exponencial."),
                         ("Identifique a base", rf"a={latex(base)}", rf"A base é positiva e diferente de 1. Como \(a={latex(base)}\), a função exponencial é {base_trend} em ℝ."),
-                        ("Escreva os dois membros com a mesma base", rf"{latex(base)}^{{{latex(var)}}} {relation_sign} {latex(base)}^{{{latex(rhs_exp)}}}", "Reescrevemos o segundo membro como uma potência de base igual à primeira."),
+                        ("Escreva os dois membros com a mesma base", rf"{latex(base)}^{{{latex(var)}}} {tex_relation} {latex(base)}^{{{latex(rhs_exp)}}}", "Reescrevemos o segundo membro como uma potência de base igual à primeira."),
                         ("Compare os expoentes", solution_formula, "Como a função é crescente quando a base é maior que 1, o sentido da desigualdade é preservado. Para uma base entre 0 e 1, seria invertido."),
                         ("Conjunto-solução", latex(solution), "Este intervalo reúne exatamente os valores reais que satisfazem a inequação."),
                     ]
