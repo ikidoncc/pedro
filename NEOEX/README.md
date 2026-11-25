@@ -146,8 +146,8 @@ Não é necessário instalar Plotly, Matplotlib, Bokeh ou outra biblioteca de gr
 
 ## 7. Executar no Google Colab
 
-1. Abra `NEOEX_Colab_v1.9.ipynb`.
-2. Execute a primeira célula e envie `NEOEX_v1.9.zip`.
+1. Abra `NEOEX_Colab_v1.10.ipynb`.
+2. Execute a primeira célula e envie `NEOEX_v1.10.zip`.
 3. Execute a célula de instalação das dependências.
 4. Execute a última célula para iniciar o aplicativo.
 5. Abra o link temporário do Gradio apresentado pelo Colab.
