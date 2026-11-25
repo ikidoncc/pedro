@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neoex"
+version = "1.10.0"
+description = "NEOEX — EXPONENCIAL LAB: Laboratório Interativo de Matemática"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gradio>=6.0,<7.0",
+    "sympy>=1.13,<2.0",
+    "numpy>=1.26,<3.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["neoex*"]
+
+[tool.setuptools.package-data]
+neoex = ["graph_runtime.js", "assets/*", "assets/mathjax/*"]

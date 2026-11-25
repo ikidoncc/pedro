@@ -1,0 +1,31 @@
+name: NEOEX CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: python -m pip install -r NEOEX/requirements.txt
+      - name: Check Python syntax and JS syntax
+        run: |
+          cd NEOEX
+          python -m py_compile app.py neoex/*.py neoex/tabs/*.py scripts/*.py tests/*.py
+          node --check neoex/graph_runtime.js
+          node --check neoex/assets/mathjax_loader.js
+      - name: Check version sync and run unit tests
+        run: |
+          cd NEOEX
+          python scripts/build_release.py --check-only
+          python -m unittest discover -s tests -v
