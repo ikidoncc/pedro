@@ -274,17 +274,6 @@ def _special_polynomial_steps(expr, operation):
 
 def _special_raw_steps(cleaned: str, operation: str):
     compact = re.sub(r"\s+", "", cleaned).replace("**", "^")
-    if compact in {"2^(2x)-5*2^x+4", "2^(2*x)-5*2^x+4"} and operation in {"Simplificar", "Fatorar"}:
-        return [
-            ("Expressão original", r"2^{2x}-5\cdot2^x+4", "A variável aparece no expoente. Para fatorar com clareza, vamos reconhecer uma expressão quadrática em 2ˣ."),
-            ("Faça uma substituição", r"t=2^x,\quad t>0", "A potência 2ˣ é positiva para todo x real. Por isso, podemos chamá-la de t e registrar a condição t>0."),
-            ("Reescreva a potência de expoente duplo", r"2^{2x}=(2^x)^2=t^2", "Usamos a propriedade da potência de potência: dobrar o expoente x equivale a elevar (2ˣ) ao quadrado."),
-            ("Substitua na expressão", r"t^2-5t+4", "Trocamos 2ˣ por t e 2²ˣ por t². Agora temos um trinômio quadrático usual."),
-            ("Encontre dois números", r"1\cdot4=4,\qquad 1+4=5", "Precisamos de dois números cujo produto seja o termo independente 4 e cuja soma seja o coeficiente 5. Esses números são 1 e 4."),
-            ("Fatore o trinômio", r"t^2-5t+4=(t-1)(t-4)", "Com os números encontrados, escrevemos o trinômio como produto de dois fatores."),
-            ("Retorne à variável original", r"(2^x-1)(2^x-4)", "Substituímos t por 2ˣ novamente. A expressão agora está fatorada em função de x."),
-            ("Confira a fatoração", r"(2^x-1)(2^x-4)=2^{2x}-5\cdot2^x+4", "Ao multiplicar os fatores, recuperamos a expressão original: 2²ˣ−4·2ˣ−1·2ˣ+4, e as parcelas centrais somam −5·2ˣ."),
-        ], r"(2^x-1)(2^x-4)", []
     if compact in {"(x^2-x^3)/(x^3+x^5)", "(x²-x³)/(x³+x⁵)"} and operation in {"Simplificar", "Simplificar fração"}:
         return [
             ("Expressão original", r"\frac{x^2-x^3}{x^3+x^5}", "O numerador e o denominador possuem fatores comuns. Vamos fatorar cada parte antes de cancelar."),
@@ -321,30 +310,248 @@ def _special_raw_steps(cleaned: str, operation: str):
 
 
 
-def _special_exponential_fraction_steps(expr, operation):
-    """Detailed reduction of the exponential fraction shown in the user's reference."""
+def _sup_var(base: sp.Expr, var: sp.Symbol) -> str:
+    sup_map = str.maketrans({"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "n": "ⁿ", "x": "ˣ", "y": "ʸ", "m": "ᵐ", "i": "ⁱ"})
+    return f"{sp.sstr(base)}{var.name.translate(sup_map)}"
+
+
+def _flatten_op(expr: sp.Expr, op_cls) -> list[sp.Expr]:
+    if isinstance(expr, op_cls):
+        out = []
+        for arg in expr.args:
+            out.extend(_flatten_op(arg, op_cls))
+        return out
+    return [expr]
+
+
+def _extract_shifted_exp_terms(part: sp.Expr, var: sp.Symbol):
+    """Parse a sum of c_i * b^(var + k_i) terms with common rational base b > 0, b != 1."""
+    terms_raw = _flatten_op(part, sp.Add)
+    parsed = []
+    detected_base = None
+    for term in terms_raw:
+        coeff = sp.Integer(1)
+        exp_pow = None
+        for factor in _flatten_op(term, sp.Mul):
+            if factor.has(var):
+                if exp_pow is not None or not isinstance(factor, sp.Pow):
+                    return None
+                exp_pow = factor
+            else:
+                coeff *= factor
+        if exp_pow is None:
+            return None
+        base, exponent = exp_pow.args
+        if not (base.is_Rational and base > 0 and base != 1):
+            return None
+        if detected_base is None:
+            detected_base = base
+        elif detected_base != base:
+            return None
+        try:
+            poly_exp = sp.Poly(exponent, var)
+        except Exception:
+            return None
+        if poly_exp.degree() != 1:
+            return None
+        slope, shift = poly_exp.all_coeffs()
+        if slope != 1 or not shift.is_Rational:
+            return None
+        parsed.append((sp.simplify(coeff), sp.Rational(shift)))
+    if detected_base is None or not parsed:
+        return None
+    return detected_base, parsed
+
+
+def _exponential_fraction_steps(expr_preserved: sp.Expr, expr_eval: sp.Expr, operation: str):
+    """Factor out common b^v in exponential fractions like (2^(n+2)+2^(n+1)+3*2^n)/(2^(n-1)-5*2^n)."""
     if operation not in {"Simplificar", "Simplificar fração"}:
         return None
-    n = sp.Symbol("n", real=True)
-    target = (2**(n+2) + 2**(n+1) + 3*2**n) / (2**(n-1) - 5*2**n)
-    try:
-        if sp.simplify(expr - target) != 0:
-            return None
-    except Exception:
+    symbols = sorted(expr_preserved.free_symbols, key=lambda s: s.name)
+    if len(symbols) != 1:
         return None
+    var = symbols[0]
+    num_factors = []
+    den_factors = []
+    for factor in sp.Mul.make_args(expr_preserved):
+        if isinstance(factor, sp.Pow) and factor.exp == -1:
+            den_factors.append(factor.base)
+        else:
+            num_factors.append(factor)
+    if len(den_factors) != 1 or len(num_factors) != 1:
+        return None
+    num_part, den_part = num_factors[0], den_factors[0]
+    num_info = _extract_shifted_exp_terms(num_part, var)
+    den_info = _extract_shifted_exp_terms(den_part, var)
+    if not num_info or not den_info or num_info[0] != den_info[0]:
+        return None
+    base = num_info[0]
+    num_terms, den_terms = num_info[1], den_info[1]
+    if not any(shift != 0 for _, shift in num_terms + den_terms):
+        return None
+
+    base_tex = latex(base)
+    var_tex = latex(var)
+    pow_tex = rf"{base_tex}^{{{var_tex}}}"
+    pow_plain = _sup_var(base, var)
+
+    def term_tex(coeff, shift):
+        power_part = pow_tex if shift == 0 else rf"{base_tex}^{{{latex(var + shift)}}}"
+        if coeff == 1:
+            return power_part
+        if coeff == -1:
+            return "-" + power_part
+        return rf"{latex(coeff)}\cdot {power_part}"
+
+    def join_tex(items):
+        out = items[0]
+        for item in items[1:]:
+            out += item if item.startswith("-") else "+" + item
+        return out
+
+    orig_num_tex = join_tex([term_tex(c, s) for c, s in num_terms])
+    orig_den_tex = join_tex([term_tex(c, s) for c, s in den_terms])
+
+    def rewrite_shift_eq(shift):
+        if shift > 0:
+            rhs = rf"{pow_tex}\cdot {base_tex}^{{{latex(shift)}}}" if shift != 1 else rf"{pow_tex}\cdot {base_tex}"
+            return rf"{base_tex}^{{{latex(var + shift)}}}={rhs}"
+        pos = -shift
+        denom_pow = rf"{base_tex}^{{{latex(pos)}}}" if pos != 1 else base_tex
+        return rf"{base_tex}^{{{latex(var + shift)}}}=\frac{{{pow_tex}}}{{{denom_pow}}}"
+
+    num_rewrites = [rewrite_shift_eq(s) for _, s in num_terms if s != 0]
+    den_rewrites = [rewrite_shift_eq(s) for _, s in den_terms if s != 0]
+
+    def expanded_term_tex(coeff, shift):
+        if shift == 0:
+            return term_tex(coeff, 0)
+        if shift > 0:
+            power_part = rf"{pow_tex}\cdot {base_tex}^{{{latex(shift)}}}" if shift != 1 else rf"{pow_tex}\cdot {base_tex}"
+            return power_part if coeff == 1 else (f"-{power_part}" if coeff == -1 else rf"{latex(coeff)}\cdot {power_part}")
+        pos = -shift
+        denom_pow = rf"{base_tex}^{{{latex(pos)}}}" if pos != 1 else base_tex
+        frac = rf"\frac{{{pow_tex}}}{{{denom_pow}}}"
+        return frac if coeff == 1 else (f"-{frac}" if coeff == -1 else rf"{latex(coeff)}\cdot {frac}")
+
+    exp_num_tex = join_tex([expanded_term_tex(c, s) for c, s in num_terms])
+    exp_den_tex = join_tex([expanded_term_tex(c, s) for c, s in den_terms])
+
+    num_coeffs = [sp.Rational(c) * (base ** s) for c, s in num_terms]
+    den_coeffs = [sp.Rational(c) * (base ** s) for c, s in den_terms]
+    num_sum = sp.Rational(sum(num_coeffs))
+    den_sum = sp.Rational(sum(den_coeffs))
+    if den_sum == 0:
+        return None
+    final_val = sp.Rational(num_sum, den_sum)
+
+    num_inside = join_tex([latex(v) for v in num_coeffs])
+    den_inside = join_tex([latex(v) for v in den_coeffs])
+
     steps = [
-        ("Expressão original", r"\frac{2^{n+2}+2^{n+1}+3\cdot2^n}{2^{n-1}-5\cdot2^n}", "Vamos colocar em evidência a mesma potência de base 2. O objetivo é transformar cada parcela em um múltiplo de 2ⁿ."),
-        ("Reescreva as potências do numerador", r"2^{n+2}=2^n\cdot2^2,\qquad 2^{n+1}=2^n\cdot2", "Na multiplicação de potências de mesma base, somamos os expoentes. Por isso, para separar o acréscimo 2 ou 1, escrevemos 2ⁿ vezes 2² ou 2."),
-        ("Reescreva a potência do denominador", r"2^{n-1}=\frac{2^n}{2}", "Diminuir 1 no expoente equivale a dividir a potência por 2: 2ⁿ⁻¹ = 2ⁿ/2."),
-        ("Substitua na fração", r"\frac{2^n\cdot2^2+2^n\cdot2+3\cdot2^n}{\frac{2^n}{2}-5\cdot2^n}", "Agora todas as parcelas têm o fator 2ⁿ. Ainda não cancelamos nada: primeiro vamos fatorar o numerador e o denominador."),
-        ("Coloque 2ⁿ em evidência no numerador", r"\frac{2^n(2^2+2+3)}{\frac{2^n}{2}-5\cdot2^n}", "No numerador, 2ⁿ aparece nas três parcelas. Ao colocá-lo em evidência, ficam dentro dos parênteses 2², 2 e 3."),
-        ("Coloque 2ⁿ em evidência no denominador", r"\frac{2^n(4+2+3)}{2^n(\frac12-5)}", "Também podemos colocar 2ⁿ em evidência no denominador. Em 2ⁿ/2, o coeficiente é 1/2; na outra parcela, é −5."),
-        ("Calcule os números entre parênteses", r"\frac{2^n(9)}{2^n(-\frac92)}", "No numerador: 4+2+3=9. No denominador: 1/2−5=1/2−10/2=−9/2."),
-        ("Cancele o fator comum", r"\frac{2^n\cdot9}{2^n\cdot(-\frac92)}\;\Longrightarrow\;\frac{9}{-\frac92}", "Como 2ⁿ é sempre positivo para todo n real, ele nunca vale zero. Portanto, o fator 2ⁿ pode ser cancelado com segurança."),
-        ("Divida por uma fração", r"\frac{9}{-\frac92}=9\cdot\left(-\frac29\right)", "Dividir por −9/2 equivale a multiplicar pelo inverso −2/9."),
-        ("Resultado final", r"9\cdot\left(-\frac29\right)=\boxed{-2}", "O 9 do numerador cancela com o 9 do denominador. A expressão vale −2 para todo n real."),
+        ("Expressão original", rf"\frac{{{orig_num_tex}}}{{{orig_den_tex}}}", f"Vamos colocar em evidência a mesma potência de base {base_tex}, transformando cada parcela em um múltiplo de {pow_plain}."),
     ]
-    return steps, r"-2", []
+    if num_rewrites:
+        steps.append(("Reescreva as potências do numerador", r",\qquad ".join(num_rewrites), "Na multiplicação de potências de mesma base, somamos os expoentes; portanto, um acréscimo no expoente separa-se como produto."))
+    if den_rewrites:
+        steps.append(("Reescreva as potências do denominador", r",\qquad ".join(den_rewrites), "Um expoente com subtração equivale a dividir pela potência positiva correspondente."))
+    steps.extend([
+        ("Substitua na fração", rf"\frac{{{exp_num_tex}}}{{{exp_den_tex}}}", f"Agora todas as parcelas contêm o fator {pow_plain}. Primeiro fatoramos o numerador e o denominador antes de cancelar."),
+        (f"Coloque {pow_plain} em evidência no numerador", rf"\frac{{{pow_tex}\left({num_inside}\right)}}{{{exp_den_tex}}}", f"Colocamos {pow_plain} em evidência multiplicando os coeficientes numéricos do numerador."),
+        (f"Coloque {pow_plain} em evidência no denominador", rf"\frac{{{pow_tex}\left({num_inside}\right)}}{{{pow_tex}\left({den_inside}\right)}}", f"Também colocamos {pow_plain} em evidência no denominador."),
+        ("Calcule os números entre parênteses", rf"\frac{{{pow_tex}\left({latex(num_sum)}\right)}}{{{pow_tex}\left({latex(den_sum)}\right)}}", "Somamos os coeficientes numéricos dentro dos parênteses do numerador e do denominador."),
+        ("Cancele o fator comum", rf"\frac{{{pow_tex}\cdot\left({latex(num_sum)}\right)}}{{{pow_tex}\cdot\left({latex(den_sum)}\right)}}\;\Longrightarrow\;\frac{{{latex(num_sum)}}}{{{latex(den_sum)}}}", f"Como {pow_plain} é estritamente positivo para todo {var.name} real, ele nunca vale zero e pode ser cancelado com segurança."),
+    ])
+    if not den_sum.is_Integer:
+        inv_den = sp.Rational(1, den_sum)
+        steps.append(("Divida pela fração", rf"\frac{{{latex(num_sum)}}}{{{latex(den_sum)}}}={latex(num_sum)}\cdot\left({latex(inv_den)}\right)", "Dividir por uma fração equivale a multiplicar pelo seu inverso."))
+    steps.append(("Resultado final", rf"\boxed{{{latex(final_val)}}}", f"A expressão se reduz ao valor constante {latex(final_val)} para todo {var.name} real."))
+    return steps, latex(final_val), []
+
+
+def _match_exponential_quadratic(expr: sp.Expr, var: sp.Symbol):
+    """Detect A*b^(2x) + B*b^x + C via substitution t = b^x."""
+    t_sym = sp.Symbol("t", positive=True)
+    for node in sp.preorder_traversal(expr):
+        if not isinstance(node, sp.Pow):
+            continue
+        base = node.base
+        if not (base.is_number and base.is_real and base > 0 and base != 1):
+            continue
+        sub = sp.simplify(expr.subs({base ** (2 * var): t_sym ** 2, base ** var: t_sym}))
+        if sub.has(var):
+            continue
+        try:
+            poly = sp.Poly(sub, t_sym)
+        except Exception:
+            continue
+        if poly.degree() == 2:
+            return base, t_sym, sub, poly
+    return None
+
+
+def _exponential_quadratic_equation_steps(relation: sp.Equality, zero_form: sp.Expr, var: sp.Symbol):
+    """Solve A*b^(2x) + B*b^x + C = 0 step by step for arbitrary base b > 0, b != 1."""
+    matched = _match_exponential_quadratic(zero_form, var)
+    if matched is None:
+        return None
+    base, t_sym, sub, _poly = matched
+    base_tex, var_tex = latex(base), latex(var)
+    pow_tex = rf"{base_tex}^{{{var_tex}}}"
+    pow_plain = _sup_var(base, var)
+    factored_t = sp.factor(sub)
+    t_solutions = sp.solve(sub, t_sym)
+    pos_t = [sol for sol in t_solutions if sol.is_real and sol > 0]
+    neg_t = [sol for sol in t_solutions if sol.is_real and sol <= 0]
+    x_solutions = [sp.simplify(sp.log(sol, base)) for sol in pos_t]
+    final_set = sp.FiniteSet(*x_solutions)
+
+    steps = [
+        ("Equação original", latex(relation), f"A equação relaciona {pow_plain} e seu quadrado {base_tex}^(2{var.name}). Vamos usar uma substituição para transformá-la em uma equação do 2º grau."),
+        ("Faça uma substituição", rf"t={pow_tex},\quad t>0", f"Como {pow_plain} é sempre positiva para todo {var.name} real, a variável auxiliar t deve ser positiva."),
+        ("Reescreva a equação", rf"{latex(sub)}=0", f"Substituindo {pow_plain} por t e ({pow_plain})² por t², obtemos uma equação quadrática em t."),
+    ]
+    if factored_t != sub:
+        steps.append(("Fatore o trinômio", rf"{latex(factored_t)}=0", "A fatoração transforma a soma em um produto de fatores."))
+    t_eq_str = r"\quad\text{ou}\quad ".join(rf"t={latex(sol)}" for sol in t_solutions) if t_solutions else r"\text{sem raízes reais para } t"
+    steps.append(("Resolva para t", t_eq_str, "Determinamos os valores reais de t que satisfazem a equação quadrática."))
+    if neg_t:
+        ignored = ", ".join(rf"t={latex(sol)}" for sol in neg_t)
+        steps.append(("Aplique a condição t > 0", rf"{ignored}\;\text{{descartado}}", "Como t representa uma potência de base positiva, valores não positivos não produzem soluções reais."))
+    if pos_t:
+        back_str = r";\quad ".join(rf"{pow_tex}={latex(t_val)}\Rightarrow {var_tex}={latex(x_val)}" for t_val, x_val in zip(pos_t, x_solutions))
+        steps.append((f"Retorne à variável {var.name}", back_str, "Igualamos a potência a cada valor positivo de t e determinamos o expoente correspondente."))
+    steps.append(("Solução", rf"S={latex(final_set)}", "Reunimos os valores reais encontrados para a variável original."))
+    return steps, latex(final_set), []
+
+
+def _exponential_quadratic_factor_steps(expr: sp.Expr, operation: str):
+    """Factor A*b^(2x) + B*b^x + C cleanly via t = b^x."""
+    if operation not in {"Simplificar", "Fatorar"}:
+        return None
+    symbols = sorted(expr.free_symbols, key=lambda s: s.name)
+    if len(symbols) != 1:
+        return None
+    var = symbols[0]
+    matched = _match_exponential_quadratic(expr, var)
+    if matched is None:
+        return None
+    base, t_sym, sub, _poly = matched
+    factored_t = sp.factor(sub)
+    if factored_t == sub or not isinstance(factored_t, sp.Mul):
+        return None
+    base_tex, var_tex = latex(base), latex(var)
+    pow_tex = rf"{base_tex}^{{{var_tex}}}"
+    pow_plain = _sup_var(base, var)
+    factored_x = factored_t.subs(t_sym, base ** var)
+    steps = [
+        ("Expressão original", latex(expr), f"A variável aparece no expoente. Vamos reconhecer uma expressão quadrática em {pow_plain}."),
+        ("Faça uma substituição", rf"t={pow_tex},\quad t>0", f"A potência {pow_plain} é positiva para todo {var.name} real; chamamos essa potência de t."),
+        ("Reescreva na variável auxiliar", latex(sub), f"Substituímos {pow_plain} por t e ({pow_plain})² por t²."),
+        ("Fatore o polinômio em t", rf"{latex(sub)}={latex(factored_t)}", "Fatoramos o trinômio quadrático obtido."),
+        ("Retorne à variável original", latex(factored_x), f"Substituímos t de volta por {pow_plain} para concluir a fatoração."),
+    ]
+    return steps, latex(factored_x), []
 
 def build_algebra_steps(source: str, operation: str):
     """Return detailed steps, a final result and original-domain exclusions."""
@@ -371,6 +578,9 @@ def build_algebra_steps(source: str, operation: str):
             raise ExpressionError("Nesta versão, resolva equações com uma única variável.")
         var = symbols[0]
         zero_form = sp.simplify(relation.lhs - relation.rhs)
+        exp_quad = _exponential_quadratic_equation_steps(relation, zero_form, var)
+        if exp_quad is not None:
+            return exp_quad
         factored = sp.factor(zero_form)
         solutions = sp.solve(relation, var)
         final = sp.FiniteSet(*solutions)
@@ -381,17 +591,6 @@ def build_algebra_steps(source: str, operation: str):
         if factored != zero_form:
             steps.append(("Fatore a expressão", latex(factored) + r"=0", "A fatoração transforma a soma em um produto. Isso permite aplicar o princípio do produto nulo."))
         steps.append(("Resolva os fatores", latex(final), "Pelo princípio do produto nulo ou pela resolução simbólica, encontramos os valores que tornam a igualdade verdadeira."))
-        if "2^(2x)" in cleaned.replace(" ", "") or "2**(2*x)" in cleaned.replace(" ", ""):
-            steps = [
-                ("Equação original", r"2^{2x}-5\cdot2^x+4=0", "A expressão contém 2ˣ e 2²ˣ. Vamos usar uma substituição para transformá-la em uma equação quadrática."),
-                ("Faça uma substituição", r"t=2^x,\quad t>0", "Como 2ˣ é sempre positivo, a variável auxiliar t também deve ser positiva."),
-                ("Reescreva a equação", r"t^2-5t+4=0", "Como 2²ˣ=(2ˣ)², substituímos 2ˣ por t e 2²ˣ por t²."),
-                ("Fatore o trinômio", r"(t-1)(t-4)=0", "Procuramos dois números com produto 4 e soma 5: 1 e 4. Por isso, o trinômio se decompõe nesses dois fatores."),
-                ("Aplique o princípio do produto nulo", r"t-1=0\quad\text{ou}\quad t-4=0", "Um produto é zero quando pelo menos um dos fatores é zero."),
-                ("Resolva para t", r"t=1\quad\text{ou}\quad t=4", "Isolamos t em cada uma das duas equações."),
-                ("Retorne à variável x", r"2^x=1\Rightarrow x=0;\quad 2^x=4\Rightarrow x=2", "Como 1=2⁰ e 4=2², igualamos os expoentes das potências de mesma base."),
-                ("Solução", r"S=\{0,2\}", "As duas soluções satisfazem a equação original."),
-            ]
         return steps, latex(final), []
 
     if operation == "Resolver inequação":
@@ -438,11 +637,18 @@ def build_algebra_steps(source: str, operation: str):
         return steps, latex(solution), []
 
     original_formula = _source_formula(cleaned, expr)
-    special_exponential = _special_exponential_fraction_steps(expr, operation)
+    special_exponential = _exponential_fraction_steps(expr_for_domain, expr, operation)
     if special_exponential is not None:
         steps, result, restrictions = special_exponential
         steps = list(steps)
         steps.append(_domain_step(expr))
+        return steps, result, restrictions
+
+    exp_quadratic_factor = _exponential_quadratic_factor_steps(expr, operation)
+    if exp_quadratic_factor is not None:
+        steps, result, restrictions = exp_quadratic_factor
+        steps = list(steps)
+        steps.append(_domain_step(expr_for_domain))
         return steps, result, restrictions
 
     numeric_steps = _numeric_power_steps(cleaned, expr) if operation in {"Simplificar", "Simplificar fração"} else None
