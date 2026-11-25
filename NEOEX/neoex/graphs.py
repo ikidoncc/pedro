@@ -17,10 +17,26 @@ from .domain import real_domain, real_domain_latex
 X = sp.Symbol("x", real=True)
 
 
+def _real_branch_expr(expr: sp.Expr) -> sp.Expr:
+    """Rewrite odd-denominator rational powers to evaluate on the real branch in NumPy."""
+    if not isinstance(expr, sp.Basic) or not expr.args:
+        return expr
+    rebuilt_args = tuple(_real_branch_expr(arg) for arg in expr.args)
+    if rebuilt_args != expr.args:
+        expr = expr.func(*rebuilt_args)
+    if isinstance(expr, sp.Pow):
+        base, exponent = expr.args
+        if isinstance(exponent, sp.Rational) and int(exponent.q) % 2 == 1 and int(exponent.q) != 1:
+            abs_pow = sp.Pow(sp.Abs(base), exponent)
+            return sp.sign(base) * abs_pow if int(exponent.p) % 2 else abs_pow
+    return expr
+
+
 @lru_cache(maxsize=256)
 def _numpy_function(expr: sp.Expr):
     try:
-        return sp.lambdify(X, expr, modules=[{"Abs": np.abs}, "numpy"], cse=True)
+        real_expr = _real_branch_expr(expr)
+        return sp.lambdify(X, real_expr, modules=[{"Abs": np.abs}, "numpy"], cse=True)
     except Exception as exc:
         raise ExpressionError("Não foi possível preparar esta expressão para avaliação numérica.") from exc
 
@@ -33,8 +49,12 @@ def evaluate(expr: sp.Expr, value: float) -> float | None:
             if arr.size != 1:
                 return None
             result = arr.reshape(-1)[0]
-        value = float(np.real(result))
-        return value if math.isfinite(value) and abs(value) < 1e12 else None
+        if np.iscomplexobj(result):
+            if abs(float(np.imag(result))) > 1e-10:
+                return None
+            result = np.real(result)
+        numeric = float(result)
+        return numeric if math.isfinite(numeric) and abs(numeric) < 1e12 else None
     except Exception:
         return None
 
