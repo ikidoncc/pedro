@@ -80,7 +80,7 @@ def make_question(level: str):
         )
 
     if level == "Intermediário":
-        kind = random.choice(["expoente negativo", "expoente fracionário", "fatoração", "fração algébrica"])
+        kind = random.choice(["expoente negativo", "expoente fracionário", "fatoração", "fração algébrica", "domínio real"])
         if kind == "expoente negativo":
             base = random.choice([2, 3, 5])
             m = random.randint(2, 5)
@@ -119,38 +119,94 @@ def make_question(level: str):
                 ],
             )
         if kind == "fatoração":
+            k = random.randint(2, 4)
+            step = random.randint(1, 2)
+            m = k + step
+            c = random.choice([1, 2, 3])
+            c_txt = "" if c == 1 else str(c)
+            c_tex = "" if c == 1 else str(c)
+            inner_a = "x" if step == 1 else f"x^{step}"
             return _question(
                 level,
-                "Fatore colocando o fator comum em evidência: x³ + x²",
-                "x²(x + 1)",
-                ["x(x + 1)", "x²(x − 1)", "x³(x + 1)"],
+                f"Fatore colocando o fator comum em evidência: x^{m} + {c_txt}x^{k}",
+                f"x^{k}({inner_a} + {c})",
+                [f"x^{k - 1}({inner_a} + {c})", f"x^{k}({inner_a} − {c})", f"x^{m}({inner_a} + {c})"],
                 [
-                    ("Separe os termos", r"x^3+x^2", "A expressão tem dois termos: x³ e x². Vamos procurar a maior potência de x que divide os dois."),
-                    ("Identifique o fator comum", r"x^2", "x² divide x³ e também divide x². Por isso é o fator comum que podemos colocar em evidência."),
-                    ("Divida o primeiro termo", r"\frac{x^3}{x^2}=x", "Ao retirar x² de x³, sobra um fator x."),
-                    ("Divida o segundo termo", r"\frac{x^2}{x^2}=1", "Ao retirar x² de x², sobra 1."),
-                    ("Monte o produto", r"x^2(x+1)", "Colocamos o fator comum do lado de fora e os quocientes dentro dos parênteses."),
-                    ("Confira pela distributividade", r"x^2\cdot x+x^2\cdot1=x^3+x^2", "Distribuir x² recupera exatamente os dois termos iniciais."),
+                    ("Separe os termos", rf"x^{{{m}}}+{c_tex}x^{{{k}}}", f"A expressão tem dois termos: x^{m} e {c_txt}x^{k}. Vamos procurar a maior potência de x que divide os dois."),
+                    ("Identifique o fator comum", rf"x^{{{k}}}", f"x^{k} é a menor potência de x presente nos dois termos; portanto, é o fator comum em evidência."),
+                    ("Divida o primeiro termo", rf"\frac{{x^{{{m}}}}}{{x^{{{k}}}}}={inner_a}", f"Subtraímos os expoentes: {m} − {k} = {step}."),
+                    ("Divida o segundo termo", rf"\frac{{{c_tex}x^{{{k}}}}}{{x^{{{k}}}}}={c}", f"Ao cancelar x^{k}, sobra o coeficiente {c}."),
+                    ("Monte o produto", rf"x^{{{k}}}({inner_a}+{c})", "Colocamos o fator comum do lado de fora e os quocientes dentro dos parênteses."),
+                    ("Confira pela distributividade", rf"x^{{{k}}}\cdot {inner_a}+x^{{{k}}}\cdot {c}=x^{{{m}}}+{c_tex}x^{{{k}}}", "Distribuir o fator comum recupera exatamente a expressão inicial."),
                 ],
             )
+        if kind == "domínio real":
+            variant = random.choice(["raiz", "log", "racional"])
+            if variant == "raiz":
+                a = random.randint(1, 6)
+                return _question(
+                    level,
+                    f"Qual é o domínio real da função g(x) = sqrt(x − {a})?",
+                    f"x ≥ {a}",
+                    [f"x > {a}", f"x ≥ −{a}", "ℝ"],
+                    [
+                        ("Identifique a operação restritiva", rf"g(x)=\sqrt{{x-{a}}}", "Nos números reais, a raiz quadrada exige radicando não negativo."),
+                        ("Monte a inequação de existência", rf"x-{a}\ge 0", "O conteúdo dentro da raiz pode ser zero ou positivo."),
+                        ("Isole a variável", rf"x\ge {a}", f"Somamos {a} aos dois lados da desigualdade."),
+                        ("Resposta", rf"x\ge {a}", f"Logo, Dₓ = [{a}, +∞)."),
+                    ],
+                )
+            if variant == "log":
+                a = random.randint(1, 6)
+                return _question(
+                    level,
+                    f"Qual é o domínio real da função g(x) = ln(x + {a})?",
+                    f"x > −{a}",
+                    [f"x ≥ −{a}", f"x > {a}", f"x ≠ −{a}"],
+                    [
+                        ("Identifique a condição do logaritmo", rf"g(x)=\ln(x+{a})", "O logaritmo natural real só está definido para argumentos estritamente positivos."),
+                        ("Monte a inequação de existência", rf"x+{a}>0", "O argumento não pode ser zero nem negativo."),
+                        ("Isole a variável", rf"x>-{a}", f"Subtraímos {a} dos dois membros."),
+                        ("Resposta", rf"x>-{a}", f"Logo, Dₓ = (−{a}, +∞)."),
+                    ],
+                )
+            a = random.randint(2, 5)
+            sq = a * a
+            return _question(
+                level,
+                f"Qual é o domínio real da função g(x) = 1/(x^2 − {sq})?",
+                f"ℝ \\ {{−{a}, {a}}}",
+                [f"ℝ \\ {{{a}}}", f"ℝ \\ {{−{sq}, {sq}}}", "ℝ"],
+                [
+                    ("Observe o denominador", rf"x^2-{sq}\ne 0", "Em uma fração real, o denominador nunca pode se anular."),
+                    ("Resolva a equação auxiliar", rf"x^2={sq}\Rightarrow x=\pm {a}", f"Os valores que anulam o denominador são x = −{a} e x = {a}."),
+                    ("Exclua os pontos proibidos", rf"D_x=\mathbb{{R}}\setminus\{{-{a},{a}\}}", "Todos os demais números reais pertencem ao domínio."),
+                    ("Resposta", rf"\mathbb{{R}}\setminus\{{-{a},{a}\}}", f"A função não está definida em −{a} nem em {a}."),
+                ],
+            )
+        k = random.randint(2, 3)
+        p = random.randint(1, 2)
+        q = k + p + random.randint(1, 2)
+        den_p = "x" if p == 1 else f"x^{p}"
+        den_q_rem = q - k
         return _question(
             level,
-            "Simplifique: (x² − x³)/(x³ + x⁵)",
-            "(1 − x)/(x + x³), com x ≠ 0",
-            ["(1 − x)/(1 + x²)", "(x − 1)/(x + x³)", "(1 − x)/(x² + x³)"],
+            f"Simplifique: (x^{k} − x^{k + 1})/(x^{k + p} + x^{q})",
+            f"(1 − x)/({den_p} + x^{den_q_rem}), com x ≠ 0",
+            [f"(1 − x)/(1 + x^{den_q_rem})", f"(x − 1)/({den_p} + x^{den_q_rem})", f"(1 − x)/(x^{p + 1} + x^{den_q_rem})"],
             [
-                ("Registre a expressão e seu domínio", r"\frac{x^2-x^3}{x^3+x^5}", "O denominador original não pode ser zero. Fatoraremos os dois polinômios antes de cancelar qualquer fator."),
-                ("Fatore o numerador", r"x^2-x^3=x^2(1-x)", "Colocamos x² em evidência: x² dividido por x² dá 1; x³ dividido por x² dá x."),
-                ("Fatore o denominador", r"x^3+x^5=x^2(x+x^3)", "O fator comum é x²: x³ dividido por x² dá x, e x⁵ dividido por x² dá x³."),
-                ("Substitua as fatorações", r"\frac{x^2(1-x)}{x^2(x+x^3)}", "Agora a fração está escrita como produto de fatores no numerador e no denominador."),
-                ("Cancele somente o fator comum", r"\frac{x^2(1-x)}{x^2(x+x^3)}\;\Longrightarrow\;\frac{1-x}{x+x^3}", "O x² é um fator multiplicativo inteiro. Não podemos cancelar parcelas de uma soma, como 1−x ou x+x³."),
-                ("Preserve a restrição", r"x^2(x+x^3)\ne0\Rightarrow x\ne0", "O denominador original se anula em x=0. A simplificação não devolve esse valor ao domínio."),
-                ("Resposta final", r"\frac{1-x}{x+x^3},\quad x\ne0", "Esta é a forma simplificada, acompanhada da condição herdada da expressão original."),
+                ("Registre a expressão e seu domínio", rf"\frac{{x^{{{k}}}-x^{{{k + 1}}}}}{{x^{{{k + p}}}+x^{{{q}}}}}", "O denominador original não pode ser zero. Fatoraremos numerador e denominador antes de cancelar."),
+                ("Fatore o numerador", rf"x^{{{k}}}-x^{{{k + 1}}}=x^{{{k}}}(1-x)", f"Colocamos x^{k} em evidência no numerador."),
+                ("Fatore o denominador", rf"x^{{{k + p}}}+x^{{{q}}}=x^{{{k}}}({den_p}+x^{{{den_q_rem}}})", f"Colocamos o mesmo fator x^{k} em evidência no denominador."),
+                ("Substitua as fatorações", rf"\frac{{x^{{{k}}}(1-x)}}{{x^{{{k}}}({den_p}+x^{{{den_q_rem}}})}}", "Agora x^{k} multiplica todo o numerador e todo o denominador."),
+                ("Cancele somente o fator comum", rf"\frac{{1-x}}{{{den_p}+x^{{{den_q_rem}}}}}", "Cancelamos apenas o fator multiplicativo comum; não se cancelam parcelas de uma soma."),
+                ("Preserve a restrição", rf"x^{{{k}}}({den_p}+x^{{{den_q_rem}}})\ne 0\Rightarrow x\ne 0", "A simplificação não devolve x = 0 ao domínio da expressão original."),
+                ("Resposta final", rf"\frac{{1-x}}{{{den_p}+x^{{{den_q_rem}}}}},\quad x\ne 0", "Esta é a forma simplificada com a condição herdada da expressão original."),
             ],
         )
 
     if level == "Difícil":
-        kind = random.choice(["equação exponencial", "inequação exponencial", "interpretação de gráfico"])
+        kind = random.choice(["equação exponencial", "inequação exponencial", "interpretação de gráfico", "parâmetros exponenciais"])
         if kind == "equação exponencial":
             base = random.choice([2, 3])
             u, v = sorted(random.sample(range(2, 6), 2))
@@ -188,6 +244,26 @@ def make_question(level: str):
                     ("Use a monotonicidade", rf"{base}^x>{base}^{{{threshold}}}\Rightarrow x>{threshold}", "Em uma função crescente, valores maiores na imagem correspondem a valores maiores no domínio. O sentido da desigualdade é preservado."),
                     ("Interprete a solução", rf"x\in({threshold},+\infty)", f"Todos os reais maiores que {threshold} satisfazem a desigualdade; o próprio {threshold} não satisfaz porque a desigualdade é estrita."),
                     ("Resposta final", rf"x>{threshold}", "Esse é o conjunto-solução da inequação."),
+                ],
+            )
+        if kind == "parâmetros exponenciais":
+            a = random.choice([2, 3, -2])
+            b = random.choice([2, 3])
+            k = random.choice([-4, -2, 3, 5])
+            h = random.choice([v for v in (1, 2, 3) if v != k])
+            k_str = f"+ {k}" if k > 0 else f"− {abs(k)}"
+            img = f"({k}, +∞)" if a > 0 else f"(−∞, {k})"
+            wrong_imgs = [f"(−∞, {k})", f"[{k}, +∞)", f"({h}, +∞)"] if a > 0 else [f"({k}, +∞)", f"(−∞, {k}]", f"(−∞, {h})"]
+            return _question(
+                level,
+                f"Considere g(x) = {a}·{b}^(x − {h}) {k_str}. Qual é o conjunto imagem de g em ℝ?",
+                img,
+                wrong_imgs,
+                [
+                    ("Observe a potência exponencial", rf"{b}^{{x-{h}}}>0", f"Como a base {b} é positiva, a potência {b}^(x − {h}) assume apenas valores estritamente positivos."),
+                    ("Multiplique pelo parâmetro a", rf"{a}\cdot {b}^{{x-{h}}}" + (">0" if a > 0 else "<0"), f"Como a = {a} é " + ("positivo, o sinal permanece positivo." if a > 0 else "negativo, o sinal se inverte para negativo.")),
+                    ("Aplique o deslocamento vertical k", rf"g(x)" + (f">{k}" if a > 0 else f"<{k}"), f"Somando k = {k}, todos os valores da imagem ficam " + ("acima" if a > 0 else "abaixo") + f" da assíntota horizontal y = {k}."),
+                    ("Resposta", img, f"A assíntota y = {k} não é atingida; logo, o intervalo é aberto em {k}."),
                 ],
             )
         base = random.choice([2, 3])
