@@ -210,6 +210,39 @@ class NeoexGraphInterfaceTests(unittest.TestCase):
         self.assertIn("Assíntota horizontal", analysis)
         self.assertEqual(state["mode"], "parameter")
 
+    def test_ui_footer_version_and_mathjax_fallbacks(self):
+        from neoex import __version__
+        from neoex.algebra import build_algebra_steps
+        from neoex.exercises import make_question
+        from neoex.ui import _algebra_preview, _exercise_solution_html, _property_header, _steps_stack_html
+
+        app = build_app()
+        config = app.get_config_file()
+        html_values = [
+            item.get("props", {}).get("value", "")
+            for item in config["components"]
+            if item.get("type") == "html"
+        ]
+        self.assertTrue(any(f"VERSÃO {__version__}" in val for val in html_values))
+        self.assertFalse(any("VERSÃO 1.9" in val for val in html_values))
+        self.assertFalse(any("sem Canvas ou biblioteca" in val for val in html_values))
+        self.assertIn("'.counter'", MATHJAX_HEAD)
+
+        preview_html, _ = _algebra_preview("2^x + 1")
+        self.assertIn("data-neoex-tex-fallback=", preview_html)
+        self.assertIn("data-neoex-tex-fallback=", _property_header("mult"))
+        steps, _, _ = build_algebra_steps("x^3 + x^2", "Fatorar")
+        self.assertIn("data-neoex-tex-fallback=", _steps_stack_html(steps))
+        q = make_question("Básico")
+        self.assertIn("data-neoex-tex-fallback=", _exercise_solution_html(q, "A", True))
+
+    def test_canvas_runtime_dynamic_roots_and_unary_exponent_formatting(self):
+        runtime = (ROOT / "neoex" / "graph_runtime.js").read_text(encoding="utf-8")
+        self.assertIn("function getVisibleRoots()", runtime)
+        self.assertIn("const findBalancedParen", runtime)
+        self.assertIn("function syncResetView()", runtime)
+        self.assertIn("source[nextIndex] === '-' || source[nextIndex] === '+'", runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

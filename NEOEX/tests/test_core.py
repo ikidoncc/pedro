@@ -2,10 +2,10 @@ import unittest
 import sympy as sp
 import re
 
-from neoex.parser import parse_math, format_math_latex, ExpressionError
+from neoex.parser import parse_math, parse_inequality, format_math_latex, ExpressionError
 from neoex.properties import PROPERTIES
 from neoex.algebra import build_algebra_steps
-from neoex.graphs import build_graph_spec, analyze_function, to_javascript
+from neoex.graphs import build_graph_spec, analyze_function, evaluate, to_javascript
 from neoex.domain import real_domain_latex
 from neoex.exercises import make_question
 from neoex.ui import (
@@ -217,6 +217,27 @@ class NeoexMathTests(unittest.TestCase):
         self.assertIn("Compare os expoentes", titles)
         self.assertIn(r"x > 5", [step[1] for step in steps])
         self.assertEqual(result, r"\left(5, \infty\right)")
+
+    def test_non_strict_and_chained_inequalities(self):
+        steps, result, _ = build_algebra_steps("2^x>=4", "Resolver inequação")
+        formulas = [step[1] for step in steps]
+        self.assertIn(r"x \ge 2", formulas)
+        self.assertIn(r"\left[2, \infty\right)", result)
+
+        steps_dec, _, _ = build_algebra_steps("(1/2)^x<=1/4", "Resolver inequação")
+        self.assertIn(r"x \ge 2", [step[1] for step in steps_dec])
+
+        with self.assertRaises(ExpressionError):
+            parse_inequality("1 < 2^x < 8")
+
+    def test_real_branch_evaluation_for_odd_denominator_powers(self):
+        self.assertAlmostEqual(evaluate(parse_math("x^(1/3)"), -8.0), -2.0, places=6)
+        self.assertAlmostEqual(evaluate(parse_math("x^(2/3)"), -8.0), 4.0, places=6)
+        self.assertIsNone(evaluate(parse_math("x^(-1/3)"), 0.0))
+        self.assertIsNone(evaluate(parse_math("sqrt(x)"), -4.0))
+        spec = build_graph_spec("(x+8)^(1/3)", -10, 10, -8)
+        self.assertAlmostEqual(spec["y_point"], 0.0, places=6)
+        self.assertTrue(any(abs(r + 8.0) < 1e-4 for r in spec["roots"]))
 
     def test_visual_superscript_colors_and_exercise_controls(self):
         stage = _prop_stage_html("div", "a³ / a²", 0)
