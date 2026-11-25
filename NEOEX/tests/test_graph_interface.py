@@ -243,6 +243,38 @@ class NeoexGraphInterfaceTests(unittest.TestCase):
         self.assertIn("function syncResetView()", runtime)
         self.assertIn("source[nextIndex] === '-' || source[nextIndex] === '+'", runtime)
 
+    def test_ui_assets_modularized_and_legacy_plotly_css_removed(self):
+        from neoex.ui import CSS
+
+        self.assertTrue((ROOT / "neoex" / "assets" / "styles.css").is_file())
+        self.assertTrue((ROOT / "neoex" / "assets" / "mathjax_loader.js").is_file())
+        self.assertTrue((ROOT / "neoex" / "latex_plain.py").is_file())
+        for tab_file in ("properties_tab.py", "algebra_tab.py", "graphs_tab.py", "exercises_tab.py"):
+            self.assertTrue((ROOT / "neoex" / "tabs" / tab_file).is_file())
+        for dead_selector in (".neoex-live-graph-shell", ".neoex-plot-area", ".neoex-draggable-point"):
+            self.assertNotIn(dead_selector, CSS)
+
+    def test_release_builder_validates_versions_and_builds_clean_zip(self):
+        import sys
+        import tempfile
+        import zipfile
+
+        scripts_dir = str(ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import build_release
+
+        version = build_release.validate_version_sync(ROOT)
+        self.assertEqual(version, "1.10.0")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = build_release.build_zip(ROOT, Path(tmpdir))
+            self.assertTrue(zip_path.is_file())
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                names = archive.namelist()
+                self.assertIn("NEOEX/app.py", names)
+                self.assertIn("NEOEX/neoex/assets/styles.css", names)
+                self.assertFalse(any("__pycache__" in name or ".venv" in name for name in names))
+
 
 if __name__ == "__main__":
     unittest.main()
