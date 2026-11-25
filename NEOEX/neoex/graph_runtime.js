@@ -131,6 +131,8 @@
       lastIntersections: [],
       intersectionAll: false,
       intersectionKey: '',
+      visibleRoots: Array.isArray(cfg.roots) ? cfg.roots : [],
+      rootsKey: '',
       samplesVersion: 0,
       lastPointY: null
     };
@@ -270,6 +272,26 @@
       return found;
     }
 
+    function getVisibleRoots() {
+      const insideInitial = state.viewXMin >= cfg.x_min - 1e-9 && state.viewXMax <= cfg.x_max + 1e-9;
+      if (insideInitial) {
+        return state.roots.filter(r => r >= state.viewXMin && r <= state.viewXMax);
+      }
+      const key = String(state.samplesVersion);
+      if (state.rootsKey === key) return state.visibleRoots;
+      const merged = [];
+      const addRoot = x => {
+        if (!finite(x) || x < state.viewXMin || x > state.viewXMax) return;
+        if (!merged.some(v => Math.abs(v - x) < 1e-4 * Math.max(1, Math.abs(x)))) merged.push(x);
+      };
+      state.roots.forEach(addRoot);
+      computeIntersections(0).forEach(addRoot);
+      merged.sort((a, b) => a - b);
+      state.visibleRoots = merged;
+      state.rootsKey = key;
+      return merged;
+    }
+
     function drawText(text, x, y, color = '#b9cce8', align = 'center', font = '11px Inter,Arial') {
       ctx.fillStyle = color;
       ctx.font = font;
@@ -385,9 +407,9 @@
       });
 
       // Roots on the x-axis.
+      const visibleRoots = getVisibleRoots();
       if (state.showRoots) {
-        state.roots.forEach((root, i) => {
-          if (root < state.viewXMin || root > state.viewXMax) return;
+        visibleRoots.forEach((root, i) => {
           const px = xToPx(root, r);
           const py = yToPx(0, r);
           ctx.beginPath(); ctx.fillStyle = '#ffcf72'; ctx.strokeStyle = '#fff2c9'; ctx.lineWidth = 1.5;
@@ -460,23 +482,32 @@
         buffer = '';
       };
       let index = 0;
+      const findBalancedParen = (start) => {
+        let depth = 0;
+        for (let end = start; end < source.length; end++) {
+          if (source[end] === '(') depth++;
+          else if (source[end] === ')') {
+            depth--;
+            if (depth === 0) return end;
+          }
+        }
+        return -1;
+      };
       while (index < source.length) {
         const ch = source[index];
         if (ch === '^') {
           let exponent = null;
           let nextIndex = index + 1;
           if (source[nextIndex] === '(') {
-            let depth = 0;
-            let end = nextIndex;
-            for (; end < source.length; end++) {
-              if (source[end] === '(') depth++;
-              else if (source[end] === ')') {
-                depth--;
-                if (depth === 0) break;
-              }
-            }
-            if (depth === 0 && end < source.length) {
+            const end = findBalancedParen(nextIndex);
+            if (end !== -1) {
               exponent = '(' + source.slice(nextIndex + 1, end) + ')';
+              nextIndex = end + 1;
+            }
+          } else if ((source[nextIndex] === '-' || source[nextIndex] === '+') && source[nextIndex + 1] === '(') {
+            const end = findBalancedParen(nextIndex + 1);
+            if (end !== -1) {
+              exponent = source[nextIndex] + '(' + source.slice(nextIndex + 2, end) + ')';
               nextIndex = end + 1;
             }
           } else {
@@ -531,10 +562,11 @@
       if (pointSlider) pointSlider.value = String(state.pointX);
       if (pointInput && document.activeElement !== pointInput) pointInput.value = fmt(state.pointX);
       if (rootsOutput) {
+        const visibleRoots = getVisibleRoots();
         if (!state.showRoots) rootsOutput.textContent = 'Raízes ocultadas.';
         else if (cfg.roots_all) rootsOutput.textContent = 'g(x)=0 em todo o domínio definido no intervalo (respeitando eventuais lacunas).';
-        else if (!state.roots.length) rootsOutput.textContent = 'Nenhuma raiz real foi encontrada no intervalo atual.';
-        else rootsOutput.textContent = 'Raízes: ' + state.roots.map((x, i) => 'x' + (i + 1) + ' = (' + fmt(x) + ', 0)').join('   ·   ');
+        else if (!visibleRoots.length) rootsOutput.textContent = 'Nenhuma raiz real foi encontrada no intervalo atual.';
+        else rootsOutput.textContent = 'Raízes: ' + visibleRoots.map((x, i) => 'x' + (i + 1) + ' = (' + fmt(x) + ', 0)').join('   ·   ');
       }
       if (intersectionsOutput) {
         if (!state.showLine) intersectionsOutput.textContent = 'Reta horizontal oculta.';
@@ -575,7 +607,7 @@
       if (!finite(value)) return;
       state.lineY = value;
       state.intersectionKey = '';
-      if (lineInput && document.activeElement !== lineInput) lineInput.value = fmt(value).replace(',', '.');
+      if (lineInput && document.activeElement !== lineInput) lineInput.value = fmt(value);
       if (lineSlider) lineSlider.value = String(value);
       queueDraw(false);
     }
@@ -620,8 +652,8 @@
       listen(pointInput, 'blur', commitX);
     }
     if (lineInput) {
-      listen(lineInput, 'keydown', event => { if (event.key === 'Enter') { event.preventDefault(); const n = Number(lineInput.value.replace(',', '.')); if (finite(n)) updateLine(n); } });
-      listen(lineInput, 'blur', () => { const raw = lineInput.value.trim(); const n = Number(raw.replace(',', '.')); if (raw && finite(n)) updateLine(n); else lineInput.value = fmt(state.lineY).replace(',', '.'); });
+      listen(lineInput, 'keydown', event => { if (event.key === 'Enter') { event.preventDefault(); const n = Number(lineInput.value.replace(',', '.')); if (finite(n)) updateLine(n); lineInput.blur(); } });
+      listen(lineInput, 'blur', () => { const raw = lineInput.value.trim(); const n = Number(raw.replace(',', '.')); if (raw && finite(n)) updateLine(n); else lineInput.value = fmt(state.lineY); });
     }
     if (lineSlider) listen(lineSlider, 'input', () => updateLine(Number(lineSlider.value)));
     if (rootsToggle) listen(rootsToggle, 'change', () => { state.showRoots = rootsToggle.checked; queueDraw(false); });
@@ -634,10 +666,10 @@
       if (!finite(min) || !finite(max) || min >= max || max - min > 1e6) { if (status) status.textContent = 'Defina um intervalo válido para x.'; return; }
       state.pointMin = min; state.pointMax = max;
       if (pointSlider) { pointSlider.min = String(min); pointSlider.max = String(max); }
-      const viewXMin = viewXMinInput ? Number(viewXMinInput.value) : min;
-      const viewXMax = viewXMaxInput ? Number(viewXMaxInput.value) : max;
       if (viewXMinInput) viewXMinInput.value = String(min);
       if (viewXMaxInput) viewXMaxInput.value = String(max);
+      if (viewYMinInput) viewYMinInput.value = '';
+      if (viewYMaxInput) viewYMaxInput.value = '';
       setView(min, max, null, null, false);
       updatePoint(state.pointX);
       if (status) status.textContent = 'Intervalo do ponto atualizado.';
@@ -726,16 +758,17 @@
     listen(canvas, 'pointerup', pointerUp);
     listen(canvas, 'pointercancel', pointerUp);
     listen(canvas, 'wheel', wheel, { passive: false });
-    listen(canvas, 'dblclick', () => { state.viewXMin = state.pointMin; state.viewXMax = state.pointMax; state.manualY = false; queueDraw(true); });
-    const resetView = $('reset-view');
-    if (resetView) listen(resetView, 'click', () => {
+    function syncResetView() {
       state.viewXMin = state.pointMin; state.viewXMax = state.pointMax;
       state.manualY = false; queueDraw(true);
       if (viewXMinInput) viewXMinInput.value = String(state.viewXMin);
       if (viewXMaxInput) viewXMaxInput.value = String(state.viewXMax);
       if (viewYMinInput) viewYMinInput.value = '';
       if (viewYMaxInput) viewYMaxInput.value = '';
-    });
+    }
+    listen(canvas, 'dblclick', syncResetView);
+    const resetView = $('reset-view');
+    if (resetView) listen(resetView, 'click', syncResetView);
     listen(canvas, 'keydown', event => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
@@ -772,7 +805,7 @@
     // Configure ranges and initial controls.
     if (pointSlider) { pointSlider.min = String(state.pointMin); pointSlider.max = String(state.pointMax); pointSlider.value = String(state.pointX); }
     if (lineSlider) { lineSlider.min = String(state.viewYMin); lineSlider.max = String(state.viewYMax); lineSlider.step = String(Math.max((state.viewYMax-state.viewYMin)/1000,0.0001)); lineSlider.value = String(state.lineY); }
-    if (lineInput) lineInput.value = String(state.lineY);
+    if (lineInput) lineInput.value = fmt(state.lineY);
     if (rootsToggle) rootsToggle.checked = true;
     if (lineToggle) lineToggle.checked = true;
     if (gridToggle) gridToggle.checked = true;
