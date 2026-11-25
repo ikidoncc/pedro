@@ -43,7 +43,8 @@ def _numpy_function(expr: sp.Expr):
 
 def evaluate(expr: sp.Expr, value: float) -> float | None:
     try:
-        result = _numpy_function(expr)(float(value))
+        with np.errstate(all="ignore"):
+            result = _numpy_function(expr)(float(value))
         arr = np.asarray(result)
         if arr.ndim:
             if arr.size != 1:
