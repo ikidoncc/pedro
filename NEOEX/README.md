@@ -117,18 +117,31 @@ A curva pode ser desenhada para expressões mais amplas do que aquelas para as q
 
 ```text
 NEOEX/
-├── app.py                  # inicialização local
-├── requirements.txt        # dependências Python
-├── run_colab.ipynb         # notebook para Google Colab
+├── app.py                      # inicialização local
+├── pyproject.toml              # metadados do pacote e dependências
+├── requirements.txt            # dependências Python
+├── run_colab.ipynb             # notebook para Google Colab
+├── scripts/
+│   └── build_release.py        # validação de versão e empacotamento ZIP
 ├── neoex/
-│   ├── parser.py           # parser matemático seguro
-│   ├── domain.py           # domínio real
-│   ├── graphs.py           # cálculo simbólico/numerico de gráficos
-│   ├── graph_runtime.js    # desenho Canvas e interações
-│   ├── algebra.py          # transformações algébricas
-│   ├── properties.py       # demonstrações de potenciação
-│   ├── exercises.py        # exercícios
-│   └── ui.py               # interface Gradio
+│   ├── parser.py               # parser matemático seguro
+│   ├── domain.py               # domínio real
+│   ├── graphs.py               # cálculo simbólico/numérico de gráficos
+│   ├── graph_runtime.js        # desenho Canvas e interações
+│   ├── algebra.py              # transformações algébricas
+│   ├── properties.py           # demonstrações de potenciação
+│   ├── exercises.py            # exercícios
+│   ├── latex_plain.py          # conversão TeX para Unicode legível
+│   ├── ui.py                   # composição da interface Gradio
+│   ├── assets/
+│   │   ├── styles.css          # folha de estilos da aplicação
+│   │   ├── mathjax_loader.js   # observador MathJax e auto-fechamento
+│   │   └── mathjax/            # MathJax local
+│   └── tabs/                   # módulos independentes de cada aba
+│       ├── properties_tab.py
+│       ├── algebra_tab.py
+│       ├── graphs_tab.py
+│       └── exercises_tab.py
 └── tests/
     ├── test_core.py
     └── test_graph_interface.py
