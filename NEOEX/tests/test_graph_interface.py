@@ -275,6 +275,18 @@ class NeoexGraphInterfaceTests(unittest.TestCase):
                 self.assertIn("NEOEX/neoex/assets/styles.css", names)
                 self.assertFalse(any("__pycache__" in name or ".venv" in name for name in names))
 
+    def test_comparison_legend_and_png_export_controls(self):
+        markup, _, _ = _render_graph("2^x", "x^2; 3^x")
+        self.assertIn('data-role="export-png"', markup)
+        match = re.search(r'data-config="([^"]+)"', markup)
+        self.assertIsNotNone(match)
+        payload = json.loads(base64.b64decode(match.group(1)).decode("utf-8"))
+        self.assertEqual([item["expression"] for item in payload["compare"]], ["x^2", "3^x"])
+        runtime = (ROOT / "neoex" / "graph_runtime.js").read_text(encoding="utf-8")
+        self.assertIn("drawLegendItem", runtime)
+        self.assertIn("toDataURL('image/png')", runtime)
+        self.assertIn("neoex-grafico.png", runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

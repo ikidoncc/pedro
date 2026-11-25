@@ -403,6 +403,33 @@ class NeoexMathTests(unittest.TestCase):
                 self.assertFalse(any(x in q["options"] for x in ("nenhuma das anteriores", "resultado diferente", "expressão indefinida")))
                 self.assertGreaterEqual(len(q["solution_steps"]), 4)
 
+    def test_generalized_exponential_fraction_and_quadratic_steps(self):
+        steps, result, _ = build_algebra_steps("(3^(x+2) + 3^(x+1) - 3^x) / (2*3^(x-1) + 3^x)", "Simplificar")
+        self.assertEqual(result, r"\frac{33}{5}")
+        self.assertIn("Coloque 3ˣ em evidência no numerador", [s[0] for s in steps])
+
+        eq_steps, eq_res, _ = build_algebra_steps("3^(2x)-10*3^x+9=0", "Resolver equação")
+        self.assertIn(r"\left\{0, 2\right\}", eq_res)
+        self.assertTrue(any("t=3^{x}" in s[1] for s in eq_steps))
+
+        fac_steps, fac_res, _ = build_algebra_steps("3^(2x)-10*3^x+9", "Fatorar")
+        self.assertIn("3^{x}", fac_res)
+        self.assertTrue(any("t=3^{x}" in s[1] for s in fac_steps))
+
+    def test_general_rational_asymptotes_and_discontinuity_report(self):
+        rows = dict(analyze_function("1/(x^2-4)"))
+        self.assertIn("x=-2", rows["Assíntotas"])
+        self.assertIn("x=2", rows["Assíntotas"])
+        self.assertIn("y=0", rows["Assíntotas"])
+        self.assertIn("descontínua nos pontos excluídos", rows["Continuidade"])
+
+    def test_parametrized_exercises_cover_new_topics(self):
+        inter_prompts = {make_question("Intermediário")["prompt"] for _ in range(60)}
+        hard_prompts = {make_question("Difícil")["prompt"] for _ in range(60)}
+        self.assertTrue(any("domínio real" in p for p in inter_prompts))
+        self.assertTrue(any("conjunto imagem" in p for p in hard_prompts))
+        self.assertGreater(len(inter_prompts), 6)
+
 
 if __name__ == "__main__":
     unittest.main()
