@@ -9,6 +9,7 @@ from functools import lru_cache
 import sympy as sp
 import gradio as gr
 
+from . import __version__
 from .properties import PROPERTIES, PROPERTY_ORDER
 from .algebra import build_algebra_steps
 from .graphs import build_graph_spec, analyze_function, evaluate, X, to_javascript
@@ -319,7 +320,7 @@ window.MathJax = {{
     '.preview-card', '.analysis-value', '.exercise-prompt', '.exercise-options',
     '.algebra-step-card', '.syntax-card', '.exercise-solution', '.property-info',
     '.neoex-canvas-math', '.neoex-canvas-domain-math', '.domain-preview-formula',
-    '.math-preview-formula'
+    '.math-preview-formula', '.counter'
   ].join(',');
   const pending = new Set();
   let observer = null, mathReady = !!window.__NEOEX_MATHJAX_READY__;
@@ -605,10 +606,11 @@ def _property_header(prop_key):
         "negative": r"a^{-n}=\frac{1}{a^n},\quad a\ne0",
         "fractional": r"a^{m/n}=\sqrt[n]{a^m}",
     }[prop_key]
+    rule_fallback = html.escape(_latex_fragment_to_plain_text(rule_math), quote=True)
     return (
         "<div class='property-info'>"
         f"<strong>{html.escape(item.label)}</strong>"
-        f"<div class='rule-line'><span>Regra:</span> \\({rule_math}\\)</div>"
+        f"<div class='rule-line'><span>Regra:</span> <span data-neoex-tex-fallback='{rule_fallback}'>\\({rule_math}\\)</span></div>"
         f"<p>{html.escape(item.note)}</p>"
         "</div>"
     )
@@ -764,11 +766,12 @@ def _steps_markdown(steps, index):
     formula = formula.replace(r"\frac", r"\dfrac")
     safe_title = html.escape(title)
     safe_explanation = _explanation_html(explanation)
+    fallback_formula = html.escape(_latex_fragment_to_plain_text(formula), quote=True)
     return (
         f"<div class='algebra-step-card'>"
         f"<div class='algebra-step-top'>NEOEX · ETAPA {index+1:02d} / {len(steps):02d}</div>"
         f"<div class='algebra-step-title'>{safe_title}</div>"
-        f"<div class='algebra-equation'>\\[\\displaystyle {formula}\\]</div>"
+        f"<div class='algebra-equation' data-neoex-tex-fallback='{fallback_formula}'>\\[\\displaystyle {formula}\\]</div>"
         f"<div class='algebra-explanation'>{safe_explanation}</div>"
         f"</div>"
     )
@@ -785,11 +788,12 @@ def _steps_stack_html(steps):
         safe_explanation = _explanation_html(explanation)
         formula = formula or r"\text{Transformação em andamento}"
         formula = formula.replace(r"\frac", r"\dfrac")
+        fallback_formula = html.escape(_latex_fragment_to_plain_text(formula), quote=True)
         cards.append(
             "<div class='algebra-step-card'>"
             f"<div class='algebra-step-top'>NEOEX · ETAPA {index:02d} / {total:02d}</div>"
             f"<div class='algebra-step-title'>{safe_title}</div>"
-            f"<div class='algebra-equation'>\\[\\displaystyle {formula}\\]</div>"
+            f"<div class='algebra-equation' data-neoex-tex-fallback='{fallback_formula}'>\\[\\displaystyle {formula}\\]</div>"
             f"<div class='algebra-explanation'>{safe_explanation}</div>"
             "</div>"
         )
@@ -798,10 +802,11 @@ def _steps_stack_html(steps):
 
 def _domain_preview_html(expr):
     formula, explanation = real_domain_latex(expr)
+    fallback_domain = html.escape(_latex_fragment_to_plain_text(formula), quote=True)
     return (
         "<div class='domain-preview'>"
         "<div class='domain-preview-label'>DOMÍNIO REAL</div>"
-        f"<div class='domain-preview-formula'>\\({formula}\\)</div>"
+        f"<div class='domain-preview-formula' data-neoex-tex-fallback='{fallback_domain}'>\\({formula}\\)</div>"
         f"<div class='domain-preview-note'>{html.escape(explanation)}</div>"
         "</div>"
     )
@@ -811,10 +816,11 @@ def _algebra_preview(text):
     try:
         expr = parse_math(text, preserve_division=True, preserve_structure=True)
         rendered = format_math_latex(text)
+        fallback_rendered = html.escape(_latex_fragment_to_plain_text(rendered), quote=True)
         return (
             "<div class='preview-card'>"
             "<div class='math-preview-title'>EXPRESSÃO MATEMÁTICA FORMATADA</div>"
-            f"<div class='math-preview-formula'>\\[{rendered}\\]</div>"
+            f"<div class='math-preview-formula' data-neoex-tex-fallback='{fallback_rendered}'>\\[{rendered}\\]</div>"
             f"{_domain_preview_html(expr)}"
             "</div>",
             "Expressão reconhecida. A notação matemática e o domínio real são atualizados a partir do que está no campo.",
@@ -1057,10 +1063,11 @@ def _exercise_solution_html(q, selected, correct):
     cards = []
     for index, (title, formula, explanation) in enumerate(solution_steps, 1):
         final_class = " exercise-final" if index == len(solution_steps) else ""
+        fallback_formula = html.escape(_latex_fragment_to_plain_text(formula), quote=True)
         cards.append(
             f"<div class='exercise-solution-step{final_class}'>"
             f"<h4>ETAPA {index:02d} · {html.escape(title)}</h4>"
-            f"<div class='exercise-solution-formula'>\\[{formula}\\]</div>"
+            f"<div class='exercise-solution-formula' data-neoex-tex-fallback='{fallback_formula}'>\\[{formula}\\]</div>"
             f"<div class='exercise-solution-explanation'>{html.escape(explanation)}</div>"
             "</div>"
         )
@@ -1191,7 +1198,7 @@ def build_app():
                         graph_compare=gr.Textbox(value="",label="COMPARAR COM (separe por ;)",placeholder="x^2; 3^x")
                         graph_button=gr.Button("GERAR GRÁFICO E ANÁLISE",variant="primary")
                     with gr.Column(scale=2):
-                        gr.HTML("""<div class='syntax-card'><div class='panel-title'>SINTAXE DE FUNÇÕES</div><div class='syntax-line'><b>Exponencial</b> <code>2^x</code> <span>→</span> <strong>2ˣ</strong></div><div class='syntax-line'><b>Potência e produto</b> <code>2^2x</code> <span>→</span> <strong>2² · x</strong></div><div class='syntax-line'><b>Expoente variável</b> <code>3x^x</code> <span>→</span> <strong>3 · xˣ</strong></div><div class='syntax-line'><b>Polinômio</b> <code>x^5-3x^2+2</code> <span>→</span> <strong>grau 5</strong></div><div class='syntax-line'><b>Fração monomial</b> <code>a/4x^2</code> <span>→</span> <strong>a/(4x²)</strong></div><div class='syntax-line'><b>Funções</b> <code>sqrt(x), sin(x), log(x)</code> <span>→</span> <strong>√x, sen x, ln x</strong></div><div class='syntax-foot'>Convenção: a multiplicação implícita liga-se antes de ÷. Assim, a/4x² é lido como a/(4x²). Use parênteses para deixar outra agrupação explícita. O gráfico é desenhado em Canvas, sem Canvas ou biblioteca externa de gráficos.</div></div>""")
+                        gr.HTML("""<div class='syntax-card'><div class='panel-title'>SINTAXE DE FUNÇÕES</div><div class='syntax-line'><b>Exponencial</b> <code>2^x</code> <span>→</span> <strong>2ˣ</strong></div><div class='syntax-line'><b>Potência e produto</b> <code>2^2x</code> <span>→</span> <strong>2² · x</strong></div><div class='syntax-line'><b>Expoente variável</b> <code>3x^x</code> <span>→</span> <strong>3 · xˣ</strong></div><div class='syntax-line'><b>Polinômio</b> <code>x^5-3x^2+2</code> <span>→</span> <strong>grau 5</strong></div><div class='syntax-line'><b>Fração monomial</b> <code>a/4x^2</code> <span>→</span> <strong>a/(4x²)</strong></div><div class='syntax-line'><b>Funções</b> <code>sqrt(x), sin(x), log(x)</code> <span>→</span> <strong>√x, sen x, ln x</strong></div><div class='syntax-foot'>Convenção: a multiplicação implícita liga-se antes de ÷. Assim, a/4x² é lido como a/(4x²). Use parênteses para deixar outra agrupação explícita. O gráfico é desenhado em Canvas, sem Plotly ou biblioteca externa de gráficos.</div></div>""")
                 graph_plot=gr.HTML(initial_graph_html, js_on_load=GRAPH_HTML_JS_ON_LOAD, elem_id="neoex-graph-output")
                 graph_analysis=gr.HTML(initial_analysis)
                 graph_state=gr.State(initial_state)
@@ -1218,6 +1225,12 @@ def build_app():
                         )
                         return error_graph, error_analysis, None, False
 
+                def render_if_changed(source, compare, state, loaded):
+                    if loaded and isinstance(state, dict) and state.get("mode") == "normal":
+                        if state.get("expression") == source and (state.get("compare") or "") == (compare or ""):
+                            return gr.skip(), gr.skip(), gr.skip(), True
+                    return render_graph_outputs(source, compare)
+
                 def choose_graph(label, compare):
                     preview = _graph_preview(label)
                     graph_outputs = render_graph_outputs(label, compare)
@@ -1232,7 +1245,7 @@ def build_app():
                 # When the user finishes editing the function (blur/Enter),
                 # rebuild the actual graph as well as the live preview.
                 graph_input.change(
-                    render_graph_outputs, [graph_input, graph_compare],
+                    render_if_changed, [graph_input, graph_compare, graph_state, graph_loaded],
                     [graph_plot, graph_analysis, graph_state, graph_loaded],
                     show_progress="hidden", trigger_mode="always_last",
                     concurrency_id="neoex-graph-compute", concurrency_limit=1,
@@ -1244,7 +1257,7 @@ def build_app():
                     concurrency_id="neoex-graph-compute", concurrency_limit=1,
                 )
                 graph_compare.change(
-                    render_graph_outputs, [graph_input, graph_compare],
+                    render_if_changed, [graph_input, graph_compare, graph_state, graph_loaded],
                     [graph_plot, graph_analysis, graph_state, graph_loaded],
                     show_progress="hidden", trigger_mode="always_last",
                     concurrency_id="neoex-graph-compute", concurrency_limit=1,
@@ -1318,7 +1331,7 @@ def build_app():
                 exercise_check.click(check_exercise,[exercise_state,exercise_options],[exercise_feedback])
 
 
-        gr.HTML("<div class='footer-neoex'>LABORATÓRIO INTERATIVO DE MATEMÁTICA · VERSÃO 1.9 · DESENVOLVIDO POR PH - Δ</div>")
+        gr.HTML(f"<div class='footer-neoex'>LABORATÓRIO INTERATIVO DE MATEMÁTICA · VERSÃO {html.escape(__version__)} · DESENVOLVIDO POR PH - Δ</div>")
     # Bound concurrency so multiple expensive graph requests cannot saturate
     # the Colab runtime or freeze the whole application queue.
     demo.queue(max_size=8, default_concurrency_limit=1)
