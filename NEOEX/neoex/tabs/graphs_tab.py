@@ -185,6 +185,7 @@ def _live_graph_html(spec):
             <label><input data-role="grid-toggle" type="checkbox" checked> grade</label>
             <button type="button" data-role="apply-axes">Aplicar eixos</button>
             <button type="button" data-role="reset-view">Reenquadrar</button>
+            <button type="button" data-role="export-png">Exportar PNG</button>
           </div>
           <div class="neoex-canvas-status">Scroll: zoom · Arrastar vazio: deslocar plano · Duplo clique: reenquadrar.</div>
         </div>
@@ -203,7 +204,7 @@ def _render_graph(expression, compare, x_point=2.0, point_min=-8.0, point_max=8.
         comp = parse_math(item)
         if len(comp.free_symbols - {X}) > 0:
             raise ExpressionError("As funções de comparação também devem usar apenas x.")
-        compare_specs.append({"label": f"h{index+1}(x)", "function_js": to_javascript(comp)})
+        compare_specs.append({"label": f"h{index+1}(x)", "expression": item, "function_js": to_javascript(comp)})
     spec["compare"] = compare_specs
     rows = analyze_function(expression, point_min, point_max)
     graph_html = _live_graph_html(spec)

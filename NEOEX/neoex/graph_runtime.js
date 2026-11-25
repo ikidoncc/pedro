@@ -65,7 +65,12 @@
     try {
       (cfg.compare || []).forEach(item => {
         const compareFn = new Function('x', '"use strict"; try { return (' + item.function_js + '); } catch (_) { return NaN; }');
-        compareFns.push({ label: item.label || 'comparação', fn: compareFn, samples: [] });
+        compareFns.push({
+          label: item.label || 'comparação',
+          expression: item.expression || '',
+          fn: compareFn,
+          samples: []
+        });
       });
     } catch (error) {
       console.warn('NEOEX comparison function skipped:', error);
@@ -459,10 +464,25 @@
         ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
       }
 
-      // Minimal legend.
-      drawText('g(x)', r.left + 8, 10, '#32d6ff', 'left', '700 11px JetBrains Mono,monospace');
-      if (state.showRoots) drawText('raízes', r.left + 58, 10, '#ffcf72', 'left', '11px Inter,Arial');
-      if (state.showLine) drawText('y = ' + fmt(state.lineY), r.left + 115, 10, '#cbb0ff', 'left', '11px Inter,Arial');
+      // Minimal legend (including comparison curves).
+      let legendX = r.left + 8;
+      const drawLegendItem = (text, color, font = '11px Inter,Arial') => {
+        if (legendX >= r.right - 24) return;
+        ctx.font = font;
+        const textWidth = ctx.measureText(text).width;
+        if (legendX + textWidth > r.right - 8) return;
+        drawText(text, legendX, 10, color, 'left', font);
+        legendX += textWidth + 14;
+      };
+      drawLegendItem('g(x)', '#32d6ff', '700 11px JetBrains Mono,monospace');
+      if (state.showRoots) drawLegendItem('raízes', '#ffcf72');
+      if (state.showLine) drawLegendItem('y = ' + fmt(state.lineY), '#cbb0ff');
+      compareFns.forEach((item, curveIndex) => {
+        const color = compareColors[curveIndex % compareColors.length];
+        const rawExpr = item.expression ? `${item.label} = ${item.expression}` : item.label;
+        const shortText = rawExpr.length > 22 ? rawExpr.slice(0, 21) + '…' : rawExpr;
+        drawLegendItem(shortText, color, '600 11px JetBrains Mono,monospace');
+      });
       updateOutputs();
     }
 
@@ -769,6 +789,22 @@
     listen(canvas, 'dblclick', syncResetView);
     const resetView = $('reset-view');
     if (resetView) listen(resetView, 'click', syncResetView);
+    const exportPng = $('export-png');
+    if (exportPng) listen(exportPng, 'click', () => {
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = 'neoex-grafico.png';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        if (status) status.textContent = 'Imagem PNG exportada.';
+      } catch (error) {
+        console.warn('NEOEX export PNG:', error);
+        if (status) status.textContent = 'Não foi possível exportar a imagem PNG.';
+      }
+    });
     listen(canvas, 'keydown', event => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
